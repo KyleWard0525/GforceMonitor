@@ -3,6 +3,17 @@ A device that utilizes LEDs to visualize the g-force one is experiencing. It is 
 
 The project is written in MicroPython, a condensed form of python capable of being run on the Raspberry Pi Pico.
 
+# Hardware
+- Waveshare 10-DOF Inertial Measurement Unit (IMU)
+- Raspberry Pi Pico
+- Breadboard
+- Jumper Wires
+- Basic Anode LEDs
+- Buttons
+
+# Software
+- The software is being written in Python using MicroPython for the RPi Pico
+
 # How It Works
 The hardware consist of 9 led's in a "+" shape. It also uses a Raspberry Pi Pico in combination with a Waveshare 10-DOF IMU
 in order to measure acceleration on the X, Y, and Z axis. 
@@ -23,6 +34,7 @@ The device also includes a primitive tire slip warning sensor that will cause th
 warn the user that their tires are about to slip as they are approaching the maximum lateral force tolerance. 
 
 # Upcoming features (potentially)
+- Data logger
 - Add additional LEDs and functions to allow for a tire-slip warning as well as a spinout warning
 - Add support for different ride profiles indicated by different colors of center LED. Analog button to switch between modes
 - Generalize for easier tuning for any type of vehicle
