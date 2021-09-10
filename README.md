@@ -1,8 +1,6 @@
 # G-Force Monitor
 A device that utilizes LEDs to visualize the g-force one is experiencing. It is primarily being designed for use in vehicles that are often subjected to extreme forces, such as race cars.
 
-The project is written in MicroPython, a condensed form of python capable of being run on the Raspberry Pi Pico.
-
 # Hardware
 - Waveshare 10-DOF Inertial Measurement Unit (IMU)
 - Raspberry Pi Pico
