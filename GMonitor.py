@@ -108,6 +108,7 @@ class GMonitor:
         # Set new ride mode
         nextIdx = tempList.index(self.rideMode['name'])+1
         
+        # Check if next mode is out of bounds
         if nextIdx > len(self.modes)-1:
             nextIdx = 0
         
@@ -238,7 +239,7 @@ class GMonitor:
                     numLeds = round(abs(self.ax / latTolerance))
                     
                     # Approaching slip angle
-                    if self.ax < -(self.maxLatForce - 0.1):
+                    if self.ax <= -(self.maxLatForce - 0.1):
                         warningDelay = 0.1 / abs(self.ax/latTolerance)
                         
                         # Flash warning
@@ -249,7 +250,7 @@ class GMonitor:
                             self.lights["1R"].toggle()
                             time.sleep(delay)
                             self.lights["1R"].toggle()
-                        elif numLeds == 2:
+                        elif numLeds >= 2:
                             self.lights["1R"].toggle()
                             self.lights['2R'].toggle()
                             time.sleep(delay)
@@ -263,7 +264,7 @@ class GMonitor:
                     numLeds = round(abs(self.ax / latTolerance))
                     
                     # Approaching slip angle
-                    if self.ax > self.maxLatForce - 0.1:
+                    if self.ax >= self.maxLatForce - 0.1:
                         warningDelay = 0.1 / abs(self.ax/latTolerance)
                         
                         # Flash warning
@@ -273,7 +274,7 @@ class GMonitor:
                             self.lights["1L"].toggle()
                             time.sleep(delay)
                             self.lights["1L"].toggle()
-                        elif numLeds == 2:
+                        elif numLeds >= 2:
                             self.lights["1L"].toggle()
                             self.lights['2L'].toggle()
                             time.sleep(delay)
@@ -289,7 +290,7 @@ class GMonitor:
                     self.lights["1D"].toggle()
                     time.sleep(delay)
                     self.lights["1D"].toggle()
-                elif numLeds == 2:
+                elif numLeds >= 2:
                     self.lights["1D"].toggle()
                     self.lights['2D'].toggle()
                     time.sleep(delay)
@@ -297,14 +298,14 @@ class GMonitor:
                     self.lights['2D'].toggle()
                     
             # Braking
-            elif self.ay < 0:
+            elif self.ay <= 0:
                 numLeds = round(abs(self.ay/longTolF))
                 
                 if numLeds == 1:
                     self.lights["1U"].toggle()
                     time.sleep(delay)
                     self.lights["1U"].toggle()
-                elif numLeds == 2:
+                elif numLeds >= 2:
                     self.lights["1U"].toggle()
                     self.lights['2U'].toggle()
                     time.sleep(delay)
@@ -355,12 +356,10 @@ def main():
     
      # Initialize gforce monitor
     gfm = GMonitor()
-    gfm.setRideMode("tech-demo")
     
+    # Start monitoring forces
     gfm.monitor()
-    
-    
-    
+
     # Cleanup
     gfm.cleanup()
     
