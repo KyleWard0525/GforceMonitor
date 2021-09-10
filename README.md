@@ -51,6 +51,5 @@ warn the user that their tires are about to slip as they are approaching the max
 # Upcoming features (potentially)
 - Data logger
 - Add additional LEDs and functions to allow for a tire-slip warning as well as a spinout warning
-- Add support for different ride profiles indicated by different colors of center LED. Analog button to switch between modes
 - Generalize for easier tuning for any type of vehicle
 - Digitalize and roll into a large vehicle telemetry project
