@@ -9,6 +9,7 @@ The project is written in MicroPython, a condensed form of python capable of bei
 - Breadboard
 - Jumper Wires
 - Basic Anode LEDs
+- RGB LED
 - Buttons
 
 # Software
