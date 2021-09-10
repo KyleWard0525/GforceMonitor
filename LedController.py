@@ -89,7 +89,9 @@ class LedController:
         for test in tests:
             print("Test: " + test + "..")
             tests[test]()
-            time.sleep(2)
+            time.sleep(1)
+            
+        self.clear()
     
     # Turn off led
     def clear(self):
