@@ -2,14 +2,18 @@
 This file contains the code for the G-force monitor
 class
 
+MicroPython runs two scripts at power on: boot.py and main.py
+in that order.
+
 Author: Kyle Ward (kward)
 """
-from machine import Pin
-from temperature import getTemp
-import icm20948
-import time
-import sys
-from LedController import LedController
+
+from LEDController import LedController # RGB LED Controller
+from machine import Pin # RPi Pico Hardware Interface
+from temperature import getTemp # Get current temperature
+import icm20948 # IMU API
+import time # sleep and timing operations
+import sys # python system operations
 
 # Main G-force Monitor Class
 class GMonitor:
@@ -19,16 +23,17 @@ class GMonitor:
         # 2013 V6 Mustang maximum lateral force tolerance
         self.maxLatForce = 0.95
         
+        # Set button Pin
+        self.btnModeSel = Pin(1, Pin.IN, Pin.PULL_UP)
+        
+        
+        # Create map of LEDs
         self.lights = {
     
         # Vertical leds ('M' = middle led)
         "2U": Pin(16, Pin.OUT),
         "1U": Pin(17, Pin.OUT),
-        "M": {
-            'R': Pin(9,Pin.OUT),
-            'G': Pin(8,Pin.OUT),
-            'B': Pin(0,Pin.OUT)
-        },
+        "M": LedController(9,8,0),
         "1D": Pin(19, Pin.OUT),
         "2D": Pin(20, Pin.OUT),
     
@@ -38,26 +43,98 @@ class GMonitor:
         "1R": Pin(11, Pin.OUT),
         "2R": Pin(10, Pin.OUT)
     }
+        # Define ride modes
+        self.modes = {
+            
+            # For showing off the device in a low-acceleration environment
+            "tech-demo": {
+                "latTolerance": 0.25, # Lateral acceleration tolerance
+                "longTolF": 0.4, # Braking tolerance
+                "longTolR": 0.2, # Forward acceleration tolerance
+                "color": "purple", # Display color for RGB led
+                "name": "tech-demo" # Name of the mode
+            },
+            
+            # For normal usage
+            "normal": {
+                "latTolerance": 0.3,    
+                "longTolF": 0.6,
+                "longTolR": 0.25,
+                "color": "cyan",
+                "name": "normal"
+            },
+            
+            # For usage when the vehicle will be driven hard on normal roads
+            "sport": {
+                "latTolerance": 0.35,
+                "longTolF": 1.0,
+                "longTolR": 0.27,
+                "color": "yellow",
+                "name": "sport"
+            },
+            
+            # For usage on a track or closed course
+            "race": {
+                "latTolerance": 0.4,
+                "longTolF": 1.2,
+                "longTolR": 0.3,
+                "color": "red",
+                "name": "race"
+            }
+            
+        }
+        
+        # Define default ride mode
+        self.rideMode = self.modes["normal"]
+        
+        # Set center LED to indicate ride mode
+        self.lights["M"].colors[self.rideMode["color"]]()
+        
+        # Create IMU
         self.imu = icm20948.ICM20948()
-        self.rgb = LedController(9,8,0)
+        
+        # Set system poll rate (Hz) of IMU
+        self.pollRateHz = 1000 # 1kHz (1ms)
         
         print("GMonitor initialized")
+        
+    # Handle button press and switch ride mode
+    def nextRideMode(self):
+        print("Mode Select Button Pressed!")
+        
+        # Set ride mode to the next in the dict
+        tempList = list(self.modes)
+
+        # Set new ride mode
+        nextIdx = tempList.index(self.rideMode['name'])+1
+        
+        if nextIdx > len(self.modes)-1:
+            nextIdx = 0
+        
+        self.rideMode = self.modes[tempList[nextIdx]]
+        
+        
+        
+        print("\nRide mode switched to: " + str(self.rideMode))
+        
+        # Update center LED to indicate ride mode
+        self.lights["M"].colors[self.rideMode["color"]]()
+        
         
     # Test LED functionality and Pin correctness
     def lightTest(self):
         # Blink each light
         for pin in self.lights:
+            # Skip RGB pin
+            if pin == 'M':
+                continue
             print("Blinking light: " + str(pin))
             self.lights[pin].toggle()
-            time.sleep(1)
+            time.sleep(0.5)
             self.lights[pin].toggle()
-            
-    # Test RGB LED
-    def rgbTest(self):
         
-        self.rgb.test()
-        
-        self.cleanup()
+        # Test RGB LED
+        self.lights['M'].test()
         
             
     # Compute acceleration values
@@ -125,25 +202,33 @@ class GMonitor:
     # latTolerance = lateral g's per led
     # longTolF = longitudinal g's per front led
     # longTolR = longitudinal g's per rear led
-    # pollRate in hz
-    def monitor(self, latTolerance, longTolF, longTolR, pollRateHz):
+    def monitor(self):
         print("\nMonitoring...")
         
-        print("\nLateral tolerance: " + str(latTolerance) + " g")
-        print("Longitudinal acceleration tolerance: " + str(longTolR) + " g")
-        print("Logitudinal braking tolerance: " + str(longTolF) + " g")
+        print("\nRide mode: " + str(self.rideMode))
         
         while True:
+            # Check for button press
+            if self.btnModeSel.value() == 0:
+                # Set callback behavior for mode select button
+                self.btnModeSel.irq(self.nextRideMode())
+                time.sleep(1)
+                continue
+            
+            # Set center LED to indicate ride mode
+            self.lights["M"].colors[self.rideMode["color"]]()
+            
+            # Get current acceleration forces
             self.pollAcceleration()
             
-            # Compute time delay
-            delay = 1 / pollRateHz
+            # Set tolerances
+            latTolerance = self.rideMode['latTolerance']
+            longTolF = self.rideMode['longTolF']
+            longTolR = self.rideMode['longTolR']
+
             
-            # Check vertical acceleration
-            if self.az > 0.5:
-                self.lights["M"].value(1)
-            else:
-                self.lights["M"].value(0)
+            # Compute time delay
+            delay = 1 / self.pollRateHz
             
             # Check lateral acceleration
             if self.ax > latTolerance or self.ax < -latTolerance:
@@ -226,12 +311,11 @@ class GMonitor:
                     self.lights['1U'].toggle()
                     self.lights['2U'].toggle()
                     
-                    
+        
                         
             # Reset middle LED
-            self.lights["M"].value(0)
-        
-    
+            self.lights["M"].clear()
+
             
     # Free system resources and disable all GPIO
     def cleanup(self):
@@ -239,30 +323,51 @@ class GMonitor:
         for pin in self.lights:
             # Check if pin is rgb led
             if pin == "M":
-                self.lights[pin]['R'].low()
-                self.lights[pin]['G'].low()
-                self.lights[pin]['B'].low()
+                self.lights[pin].clear()
                 continue
             
             self.lights[pin].value(0)
+            
+            
+    # Print system info to console
+    def printInfo(self):
+        print("\n\nGMonitor System Information:")
+        print("=======================================")
+        print("IMU Poll Rate: " + str(self.pollRateHz) + " Hz")
+        print("Ride Mode: " + str(self.rideMode))
+        
+            
+    """
+    Getters and Setters
+    """
+    def setRideMode(self, mode):
+        # Check if mode is valid
+        if not mode in self.modes:
+            print("Error in setRideMode(): invalid mode")
+            return
+        else:
+            self.rideMode = self.modes[mode]
                 
+    def setPollRateHz(self, pollRate):
+        self.pollRateHz = pollRate
                 
 def main():
     
-    # Initialize gforce monitor
+     # Initialize gforce monitor
     gfm = GMonitor()
+    gfm.setRideMode("tech-demo")
     
-    print("Current temperature: " + str(getTemp('f')) + " F")
+    gfm.monitor()
     
     
-    #gfm.monitor(0.4,1.0,0.3,100)
-    gfm.rgbTest()
     
     # Cleanup
     gfm.cleanup()
     
     
-    
-    
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        gfm = GMonitor()
+        gfm.cleanup()
