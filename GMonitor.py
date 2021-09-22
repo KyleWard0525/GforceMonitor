@@ -23,9 +23,12 @@ class GMonitor:
         # 2013 V6 Mustang maximum lateral force tolerance
         self.maxLatForce = 0.95
         
-        # Set button Pin
+        # Set ride mode button Pin
         self.btnModeSel = Pin(1, Pin.IN, Pin.PULL_UP)
         
+        # Set button pin to signal data logger to start
+        self.btnStartLogger = Pin(18, Pin.IN, Pin.PULL_UP)
+        self.enableLogger = False
         
         # Create map of LEDs
         self.lights = {
@@ -41,7 +44,10 @@ class GMonitor:
         "2L": Pin(13, Pin.OUT),
         "1L": Pin(12, Pin.OUT),
         "1R": Pin(11, Pin.OUT),
-        "2R": Pin(10, Pin.OUT)
+        "2R": Pin(10, Pin.OUT),
+        
+        # Other various signal lights
+        "logger": Pin(14, Pin.OUT) 
     }
         # Define ride modes
         self.modes = {
@@ -60,7 +66,7 @@ class GMonitor:
                 "latTolerance": 0.3,    
                 "longTolF": 0.6,
                 "longTolR": 0.25,
-                "color": "cyan",
+                "color": "yellow",
                 "name": "normal"
             },
             
@@ -69,7 +75,7 @@ class GMonitor:
                 "latTolerance": 0.35,
                 "longTolF": 1.0,
                 "longTolR": 0.27,
-                "color": "yellow",
+                "color": "cyan",
                 "name": "sport"
             },
             
@@ -113,9 +119,6 @@ class GMonitor:
             nextIdx = 0
         
         self.rideMode = self.modes[tempList[nextIdx]]
-        
-        
-        
         print("\nRide mode switched to: " + str(self.rideMode))
         
         # Update center LED to indicate ride mode
@@ -152,9 +155,6 @@ class GMonitor:
     # 1.25x the tolerance
     def flashWarning(self, side, delay):
         numBlinks = 2
-        
-        # REMOVE AFTER DEBUGGING
-        print("Flashing warning...\nDelay = " + str((delay*1000)) + " ms\n")
         
         if delay < 0.05:
             delay = 0.050
@@ -196,7 +196,27 @@ class GMonitor:
                 
                 time.sleep(delay)  
         
-        self.cleanup()
+        self.cleanup(clearAll=False)
+                
+    # Handle button press for data logger
+    def handleLoggerBtn(self):
+        press_start = time.time()
+        
+        # Toggle logging LED and update logger state
+        self.enableLogger = not self.enableLogger
+        
+        # Check logger status
+        if self.enableLogger:
+            self.lights["logger"].value(1)
+            print("\nData Logger started!")
+        else:
+            self.lights["logger"].value(0)
+            print("\nData Logger terminated!")
+            
+        # Check if button is being held down
+        while self.btnStartLogger.value() == 0:
+            # Do nothing
+            continue
                 
         
     # Light up leds relative to acceleration
@@ -209,12 +229,19 @@ class GMonitor:
         print("\nRide mode: " + str(self.rideMode))
         
         while True:
-            # Check for button press
+            # Check for ride-mode button press
             if self.btnModeSel.value() == 0:
                 # Set callback behavior for mode select button
                 self.btnModeSel.irq(self.nextRideMode())
-                time.sleep(1)
-                continue
+                time.sleep(0.5)
+                
+            
+            # Check for startLogger button press
+            if self.btnStartLogger.value() == 0:
+                # Set button call back to toggle logger
+                self.btnStartLogger.irq(self.handleLoggerBtn())
+                
+                
             
             # Set center LED to indicate ride mode
             self.lights["M"].colors[self.rideMode["color"]]()
@@ -319,12 +346,19 @@ class GMonitor:
 
             
     # Free system resources and disable all GPIO
-    def cleanup(self):
+    def cleanup(self, clearAll=True):
         # Disable all GPIO
         for pin in self.lights:
             # Check if pin is rgb led
             if pin == "M":
                 self.lights[pin].clear()
+                continue
+            
+            # Check if logger pin and clear all
+            if pin == "logger" and clearAll:
+                self.lights[pin].value(0)
+                continue
+            else:
                 continue
             
             self.lights[pin].value(0)
