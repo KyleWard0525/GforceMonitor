@@ -19,7 +19,7 @@ in order to measure acceleration on the X, Y, and Z axis.
 
 
 ![MonitorDesign8-20-2021](https://user-images.githubusercontent.com/36857534/130289143-5bacec8d-2b7a-4185-a464-6a2ab940e75e.jpg)
-
+     *Version 1.0 shown above.*
 
 When the device experiences lateral or longitudinal acceleration, it will begin to light up led's in the direction in 
 which it is feeling the forces. It also includes a Z-axis (Center) LED which is used primarily as a status indicator but will eventually be updated 
