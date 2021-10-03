@@ -1,10 +1,12 @@
-#!/home/pi/Desktop/repos/GForceMonitor/env/bin/python3
-# -*- coding: utf-8 -*-
+#!/home/pi/Desktop/repos/GForceMonitor/env/bin/python
+# EASY-INSTALL-ENTRY-SCRIPT: 'rshell==0.0.29','console_scripts','pyboard'
+__requires__ = 'rshell==0.0.29'
 import re
 import sys
-
-from rshell.pyboard import main
+from pkg_resources import load_entry_point
 
 if __name__ == '__main__':
     sys.argv[0] = re.sub(r'(-script\.pyw?|\.exe)?$', '', sys.argv[0])
-    sys.exit(main())
+    sys.exit(
+        load_entry_point('rshell==0.0.29', 'console_scripts', 'pyboard')()
+    )
