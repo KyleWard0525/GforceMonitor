@@ -105,11 +105,12 @@ class GMonitor:
         self.pollRateHz = 1000 # 1kHz (1ms)
         
         # Set initial time point
-        self.start_time = time.time()
+        self.start_time = time.time_ns()
+        self.uptime = 0.0
 
         # Create data logger object
-        self.logger = Logger(self) # Default poll rate 100hz (10ms)
-        self.logger.computeMetrics()
+        self.logger = Logger(self)
+        self.log_rate = 1000 # 10ms
         
         print("GMonitor initialized")
         
@@ -166,7 +167,32 @@ class GMonitor:
         self.roll = icm20948.Gyro[1] / gyroOffset # Roll (deg/sec)
         self.yaw = icm20948.Gyro[2] / gyroOffset # Yaw (deg/sec)
         
+        self.uptime = ((time.time_ns() - self.start_time) / 1000000.0) # Time running
         
+        # Check if metrics should be logged
+        if (self.uptime % self.log_rate == 0.0) and self.enableLogger:
+            print("\nUptime: %.2fms\nFree memory: %d bytes\nLogging metrics...\n" % (self.uptime, gc.mem_free()))
+            self.logger.computeMetrics()
+        elif (self.uptime % self.log_rate == 0 and self.enableLogger) and gc.mem_free() < 4096:
+            
+            print("\nERROR in GMonitor.pollAcceleration(): Memory limit reached!\nMemory Remaining: " +
+                  str(gc.mem_free()) + "B\n")
+            
+            # Save metrics
+            self.logger.saveMetrics()
+            
+            # Disable LED
+            self.lights["logger"].value(0)
+            print("\nData Logger terminated!")
+        
+        elif not self.enableLogger:
+            print("ERROR in pollAcceleration(): Logger disabled")
+            time.sleep(0.1)
+        else:
+            print("self.uptime = " +str(self.uptime))
+            print("self.uptime % self.log_rate = " + str(self.uptime % self.log_rate))
+            time.sleep(0.1)
+            
         
     # Flash all LEDs in the direction in which it is exceeding
     # 1.25x the tolerance
@@ -225,10 +251,17 @@ class GMonitor:
         
         # Check logger status
         if self.enableLogger:
+            # Enable LED and start logger
             self.lights["logger"].value(1)
+            self.logger.computeMetrics()
             print("\nData Logger started!")
         else:
+            # Disable LED and stop logger
             self.lights["logger"].value(0)
+            
+            # Save metrics
+            self.logger.saveMetrics()
+            
             print("\nData Logger terminated!")
             
         # Check if button is being held down
@@ -245,128 +278,122 @@ class GMonitor:
         print("\nMonitoring...")
         
         print("Current Ride mode: " + str(self.rideMode))
-        
-        try:
-            while True:
-                # Check for ride-mode button press
-                if self.btnModeSel.value() == 0:
-                    # Set callback behavior for mode select button
-                    self.btnModeSel.irq(self.nextRideMode())
-                    time.sleep(0.5)
-                    
+    
+        while True:
+            # Check for ride-mode button press
+            if self.btnModeSel.value() == 0:
+                # Set callback behavior for mode select button
+                self.btnModeSel.irq(self.nextRideMode())
+                time.sleep(0.5)
                 
-                # Check for startLogger button press
-                if self.btnStartLogger.value() == 0:
-                    # Set button call back to toggle logger
-                    self.btnStartLogger.irq(self.handleLoggerBtn())
-                    
-                    
-                
-                # Set center LED to indicate ride mode
-                self.lights["M"].colors[self.rideMode["color"]]()
-                
-                # Get current acceleration forces
-                self.pollAcceleration()
-                
-                # Set tolerances
-                latTolerance = self.rideMode['latTolerance']
-                longTolF = self.rideMode['longTolF']
-                longTolR = self.rideMode['longTolR']
-
-                
-                # Compute time delay
-                delay = 1 / self.pollRateHz
-                
-                # Check lateral acceleration
-                if self.ax > latTolerance or self.ax < -latTolerance:
-                    # Check direction
-                    if self.ax < 0:
-                        # Right
-                        numLeds = round(abs(self.ax / latTolerance))
-                        
-                        # Approaching slip angle
-                        if self.ax <= -(self.maxLatForce - 0.1):
-                            warningDelay = 0.1 / abs(self.ax/latTolerance)
-                            
-                            # Flash warning
-                            self.flashWarning("right", warningDelay)
-                            
-                        else:
-                            if numLeds == 1:
-                                self.lights["1R"].toggle()
-                                time.sleep(delay)
-                                self.lights["1R"].toggle()
-                            elif numLeds >= 2:
-                                self.lights["1R"].toggle()
-                                self.lights['2R'].toggle()
-                                time.sleep(delay)
-                                self.lights['1R'].toggle()
-                                self.lights['2R'].toggle()
-                            
-                        
-                        
-                    # Left
-                    else: 
-                        numLeds = round(abs(self.ax / latTolerance))
-                        
-                        # Approaching slip angle
-                        if self.ax >= self.maxLatForce - 0.1:
-                            warningDelay = 0.1 / abs(self.ax/latTolerance)
-                            
-                            # Flash warning
-                            self.flashWarning("left", warningDelay)
-                        else:
-                            if numLeds == 1:
-                                self.lights["1L"].toggle()
-                                time.sleep(delay)
-                                self.lights["1L"].toggle()
-                            elif numLeds >= 2:
-                                self.lights["1L"].toggle()
-                                self.lights['2L'].toggle()
-                                time.sleep(delay)
-                                self.lights['1L'].toggle()
-                                self.lights['2L'].toggle()
-                                
-                # Check direction of acceleration
-                if self.ay > 0:
-                    # Forward
-                    numLeds = round(abs(self.ay/longTolR))
-                    
-                    if numLeds == 1:
-                        self.lights["1D"].toggle()
-                        time.sleep(delay)
-                        self.lights["1D"].toggle()
-                    elif numLeds >= 2:
-                        self.lights["1D"].toggle()
-                        self.lights['2D'].toggle()
-                        time.sleep(delay)
-                        self.lights['1D'].toggle()
-                        self.lights['2D'].toggle()
-                        
-                # Braking
-                elif self.ay <= 0:
-                    numLeds = round(abs(self.ay/longTolF))
-                    
-                    if numLeds == 1:
-                        self.lights["1U"].toggle()
-                        time.sleep(delay)
-                        self.lights["1U"].toggle()
-                    elif numLeds >= 2:
-                        self.lights["1U"].toggle()
-                        self.lights['2U'].toggle()
-                        time.sleep(delay)
-                        self.lights['1U'].toggle()
-                        self.lights['2U'].toggle()
-                    
-        
-                        
-            # Reset middle LED
-            self.lights["M"].clear()
-
-        except Exception as e:
-            self.cleanup()
-            print(e)
             
+            # Check for startLogger button press
+            if self.btnStartLogger.value() == 0:
+                # Set button call back to toggle logger
+                self.btnStartLogger.irq(self.handleLoggerBtn())
+                
+                
+            
+            # Set center LED to indicate ride mode
+            self.lights["M"].colors[self.rideMode["color"]]()
+            
+            # Get current acceleration forces
+            self.pollAcceleration()
+            
+            # Set tolerances
+            latTolerance = self.rideMode['latTolerance']
+            longTolF = self.rideMode['longTolF']
+            longTolR = self.rideMode['longTolR']
+
+            
+            # Compute time delay
+            delay = 1 / self.pollRateHz
+            
+            # Check lateral acceleration
+            if self.ax > latTolerance or self.ax < -latTolerance:
+                # Check direction
+                if self.ax < 0:
+                    # Right
+                    numLeds = round(abs(self.ax / latTolerance))
+                    
+                    # Approaching slip angle
+                    if self.ax <= -(self.maxLatForce - 0.1):
+                        warningDelay = 0.1 / abs(self.ax/latTolerance)
+                        
+                        # Flash warning
+                        self.flashWarning("right", warningDelay)
+                        
+                    else:
+                        if numLeds == 1:
+                            self.lights["1R"].toggle()
+                            time.sleep(delay)
+                            self.lights["1R"].toggle()
+                        elif numLeds >= 2:
+                            self.lights["1R"].toggle()
+                            self.lights['2R'].toggle()
+                            time.sleep(delay)
+                            self.lights['1R'].toggle()
+                            self.lights['2R'].toggle()
+                        
+                    
+                    
+                # Left
+                else: 
+                    numLeds = round(abs(self.ax / latTolerance))
+                    
+                    # Approaching slip angle
+                    if self.ax >= self.maxLatForce - 0.1:
+                        warningDelay = 0.1 / abs(self.ax/latTolerance)
+                        
+                        # Flash warning
+                        self.flashWarning("left", warningDelay)
+                    else:
+                        if numLeds == 1:
+                            self.lights["1L"].toggle()
+                            time.sleep(delay)
+                            self.lights["1L"].toggle()
+                        elif numLeds >= 2:
+                            self.lights["1L"].toggle()
+                            self.lights['2L'].toggle()
+                            time.sleep(delay)
+                            self.lights['1L'].toggle()
+                            self.lights['2L'].toggle()
+                            
+            # Check direction of acceleration
+            if self.ay > 0:
+                # Forward
+                numLeds = round(abs(self.ay/longTolR))
+                
+                if numLeds == 1:
+                    self.lights["1D"].toggle()
+                    time.sleep(delay)
+                    self.lights["1D"].toggle()
+                elif numLeds >= 2:
+                    self.lights["1D"].toggle()
+                    self.lights['2D'].toggle()
+                    time.sleep(delay)
+                    self.lights['1D'].toggle()
+                    self.lights['2D'].toggle()
+                    
+            # Braking
+            elif self.ay <= 0:
+                numLeds = round(abs(self.ay/longTolF))
+                
+                if numLeds == 1:
+                    self.lights["1U"].toggle()
+                    time.sleep(delay)
+                    self.lights["1U"].toggle()
+                elif numLeds >= 2:
+                    self.lights["1U"].toggle()
+                    self.lights['2U'].toggle()
+                    time.sleep(delay)
+                    self.lights['1U'].toggle()
+                    self.lights['2U'].toggle()
+                
+    
+                    
+        # Reset middle LED
+        self.lights["M"].clear()
             
     # Free system resources and disable all GPIO
     def cleanup(self, clearAll=True):
@@ -385,10 +412,6 @@ class GMonitor:
                 continue
             
             self.lights[pin].value(0)
-        
-        # Free memory
-        if clearAll:
-            del(self.time_points)
             
             
     # Print system info to console
