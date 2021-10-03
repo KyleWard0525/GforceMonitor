@@ -9,82 +9,63 @@ kward
 """
 
 import time
+import json
 
 # Data Logger Class
 class Logger:
     
     # Initialize logger
-    def __init__(self, gmonitor, pollRateHz=100):
+    def __init__(self, gmonitor):
         # Validate monitor
         if not gmonitor:
             print("\nERROR in Logger.__init__(): gmonitor must not be null")
         
         # Set class variables
         self.monitor = gmonitor
-        self.delay = pollRateHz / 1000.0 # 10ms (with default)
         self.metrics = {} # Data metrics to store
-        self.max_file_size = 10000000 # 10MB
-        self.filename = 'log.txt'
-        self.file = open(self.filename, "wb") # Write in binary mode
-        self.active = True
-        
+        self.max_size = 10000000 # 10MB
+        self.active = False
         
     # Compute and store metrics in structure
     def computeMetrics(self):
-        # Poll values from monitor
-        self.monitor.pollAcceleration()
+        if not self.active:
+            self.active = True
+        
+        metrics = {}
         
         # Time point
-        self.metrics['time'] = (time.time() - self.monitor.start_time)
+        metrics['time'] = ((time.time_ns() - self.monitor.start_time) / 1000000.0)
+        
+        if metrics['time'] > 1000.0:
+            metrics['time'] /= 1000.0
         
         # Acceleration
-        self.metrics['longAccel'] = [self.monitor.ax, 'g']
-        self.metrics['latAccel'] = [self.monitor.ay, 'g']
-        self.metrics['vertAccel'] = [self.monitor.az, 'g']
+        metrics['longAccel'] = [self.monitor.ax, 'g']
+        metrics['latAccel'] = [self.monitor.ay, 'g']
+        metrics['vertAccel'] = [self.monitor.az, 'g']
         
         # Gyroscopic forces
-        self.metrics['pitch'] = [self.monitor.pitch, 'deg/sec']
-        self.metrics['yaw'] = [self.monitor.yaw, 'deg/sec']
-        self.metrics['roll'] = [self.monitor.roll, 'deg/sec']
+        metrics['pitch'] = [self.monitor.pitch, 'deg/sec']
+        metrics['yaw'] = [self.monitor.yaw, 'deg/sec']
+        metrics['roll'] = [self.monitor.roll, 'deg/sec']
         
         # Derivative forces
-        self.metrics['rollPerLatAccel'] = [self.metrics['roll'][0]/self.metrics['latAccel'][0], 'deg/g'] 
-        
-        print("\n" + str(self.metrics))
-        
-    
-    # Start the data logger
-    def start(self):
-        # Check if file is open
-        if self.file.closed():
-            self.file = open(self.filename, 'wb')
-            
-        # Run while logger is active
-        while self.active:
-            pass
-        
-    
-    
-    # Turn off data logger
-    def stop(self, saveData=False):
-        # Check if current metrics should be saved to file
-        if not saveData:
-            self.active = False
+        if metrics['latAccel'][0] == 0:
+            metrics['rollPerLatAccel'] = 0.0
         else:
-            # TODO: Add logic to save metrics
-            self.saveMetrics()
-            self.file.close()
+            metrics['rollPerLatAccel'] = [metrics['roll'][0]/metrics['latAccel'][0], 'deg/g'] 
         
+        # Add instantaneous values to metrics structure
+        self.metrics[len(self.metrics) + 1] = metrics
+        
+    
     # Save metrics to file
     def saveMetrics(self):
-        self.file.write(self.metrics)
-    
-    # Set poll rate of logger in hertz
-    def setPollRateHz(self, pollRate):
-        self.delay = pollRate / 1000.0
+        file = open('log.txt', 'a') # Write in binary mode
+        file.write(json.dumps(self.metrics))
+        file.write("\n")
+        file.close()
+        self.metrics.clear()
+        self.active = False
         
-    # Get compute delay in ms
-    def printDelay(self):
-        print("\nCurrent Logger delay %.2fms" % self.delay)
-            
-    
+           
