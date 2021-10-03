@@ -11,9 +11,11 @@ Author: Kyle Ward (kward)
 from LEDController import LedController # RGB LED Controller
 from machine import Pin # RPi Pico Hardware Interface
 from temperature import getTemp # Get current temperature
+from DataLogger import Logger # For computing and storing performance metrics
 import icm20948 # IMU API
 import time # sleep and timing operations
 import sys # python system operations
+import gc # Garbage collection
 
 # Main G-force Monitor Class
 class GMonitor:
@@ -102,12 +104,17 @@ class GMonitor:
         # Set system poll rate (Hz) of IMU
         self.pollRateHz = 1000 # 1kHz (1ms)
         
+        # Set initial time point
+        self.start_time = time.time()
+
+        # Create data logger object
+        self.logger = Logger(self) # Default poll rate 100hz (10ms)
+        self.logger.computeMetrics()
+        
         print("GMonitor initialized")
         
     # Handle button press and switch ride mode
     def nextRideMode(self):
-        print("Mode Select Button Pressed!")
-        
         # Set ride mode to the next in the dict
         tempList = list(self.modes)
 
@@ -143,7 +150,11 @@ class GMonitor:
             
     # Compute acceleration values
     def pollAcceleration(self):
+        # Free unused memory
+        gc.collect()
+        
         accelOffset = 16384 # From LSB to g
+        gyroOffset = 32.8   # From LSB to g
         
         self.imu.GyroAccelRead()
     
@@ -151,11 +162,18 @@ class GMonitor:
         self.ay = icm20948.Accel[1] / accelOffset # Lateral Acceleration 
         self.az = icm20948.Accel[2] / accelOffset # Vertical acceleration
         
+        self.pitch = icm20948.Gyro[0] / gyroOffset # Pitch (deg/sec)
+        self.roll = icm20948.Gyro[1] / gyroOffset # Roll (deg/sec)
+        self.yaw = icm20948.Gyro[2] / gyroOffset # Yaw (deg/sec)
+        
+        
+        
     # Flash all LEDs in the direction in which it is exceeding
     # 1.25x the tolerance
     def flashWarning(self, side, delay):
         numBlinks = 2
         
+        # Minor error checking
         if delay < 0.05:
             delay = 0.050
         elif delay > 0.2:
@@ -226,124 +244,129 @@ class GMonitor:
     def monitor(self):
         print("\nMonitoring...")
         
-        print("\nRide mode: " + str(self.rideMode))
+        print("Current Ride mode: " + str(self.rideMode))
         
-        while True:
-            # Check for ride-mode button press
-            if self.btnModeSel.value() == 0:
-                # Set callback behavior for mode select button
-                self.btnModeSel.irq(self.nextRideMode())
-                time.sleep(0.5)
+        try:
+            while True:
+                # Check for ride-mode button press
+                if self.btnModeSel.value() == 0:
+                    # Set callback behavior for mode select button
+                    self.btnModeSel.irq(self.nextRideMode())
+                    time.sleep(0.5)
+                    
                 
-            
-            # Check for startLogger button press
-            if self.btnStartLogger.value() == 0:
-                # Set button call back to toggle logger
-                self.btnStartLogger.irq(self.handleLoggerBtn())
+                # Check for startLogger button press
+                if self.btnStartLogger.value() == 0:
+                    # Set button call back to toggle logger
+                    self.btnStartLogger.irq(self.handleLoggerBtn())
+                    
+                    
                 
+                # Set center LED to indicate ride mode
+                self.lights["M"].colors[self.rideMode["color"]]()
                 
-            
-            # Set center LED to indicate ride mode
-            self.lights["M"].colors[self.rideMode["color"]]()
-            
-            # Get current acceleration forces
-            self.pollAcceleration()
-            
-            # Set tolerances
-            latTolerance = self.rideMode['latTolerance']
-            longTolF = self.rideMode['longTolF']
-            longTolR = self.rideMode['longTolR']
+                # Get current acceleration forces
+                self.pollAcceleration()
+                
+                # Set tolerances
+                latTolerance = self.rideMode['latTolerance']
+                longTolF = self.rideMode['longTolF']
+                longTolR = self.rideMode['longTolR']
 
-            
-            # Compute time delay
-            delay = 1 / self.pollRateHz
-            
-            # Check lateral acceleration
-            if self.ax > latTolerance or self.ax < -latTolerance:
-                # Check direction
-                if self.ax < 0:
-                    # Right
-                    numLeds = round(abs(self.ax / latTolerance))
-                    
-                    # Approaching slip angle
-                    if self.ax <= -(self.maxLatForce - 0.1):
-                        warningDelay = 0.1 / abs(self.ax/latTolerance)
+                
+                # Compute time delay
+                delay = 1 / self.pollRateHz
+                
+                # Check lateral acceleration
+                if self.ax > latTolerance or self.ax < -latTolerance:
+                    # Check direction
+                    if self.ax < 0:
+                        # Right
+                        numLeds = round(abs(self.ax / latTolerance))
                         
-                        # Flash warning
-                        self.flashWarning("right", warningDelay)
-                        
-                    else:
-                        if numLeds == 1:
-                            self.lights["1R"].toggle()
-                            time.sleep(delay)
-                            self.lights["1R"].toggle()
-                        elif numLeds >= 2:
-                            self.lights["1R"].toggle()
-                            self.lights['2R'].toggle()
-                            time.sleep(delay)
-                            self.lights['1R'].toggle()
-                            self.lights['2R'].toggle()
-                        
-                    
-                    
-                # Left
-                else: 
-                    numLeds = round(abs(self.ax / latTolerance))
-                    
-                    # Approaching slip angle
-                    if self.ax >= self.maxLatForce - 0.1:
-                        warningDelay = 0.1 / abs(self.ax/latTolerance)
-                        
-                        # Flash warning
-                        self.flashWarning("left", warningDelay)
-                    else:
-                        if numLeds == 1:
-                            self.lights["1L"].toggle()
-                            time.sleep(delay)
-                            self.lights["1L"].toggle()
-                        elif numLeds >= 2:
-                            self.lights["1L"].toggle()
-                            self.lights['2L'].toggle()
-                            time.sleep(delay)
-                            self.lights['1L'].toggle()
-                            self.lights['2L'].toggle()
+                        # Approaching slip angle
+                        if self.ax <= -(self.maxLatForce - 0.1):
+                            warningDelay = 0.1 / abs(self.ax/latTolerance)
                             
-            # Check direction of acceleration
-            if self.ay > 0:
-                # Forward
-                numLeds = round(abs(self.ay/longTolR))
-                
-                if numLeds == 1:
-                    self.lights["1D"].toggle()
-                    time.sleep(delay)
-                    self.lights["1D"].toggle()
-                elif numLeds >= 2:
-                    self.lights["1D"].toggle()
-                    self.lights['2D'].toggle()
-                    time.sleep(delay)
-                    self.lights['1D'].toggle()
-                    self.lights['2D'].toggle()
+                            # Flash warning
+                            self.flashWarning("right", warningDelay)
+                            
+                        else:
+                            if numLeds == 1:
+                                self.lights["1R"].toggle()
+                                time.sleep(delay)
+                                self.lights["1R"].toggle()
+                            elif numLeds >= 2:
+                                self.lights["1R"].toggle()
+                                self.lights['2R'].toggle()
+                                time.sleep(delay)
+                                self.lights['1R'].toggle()
+                                self.lights['2R'].toggle()
+                            
+                        
+                        
+                    # Left
+                    else: 
+                        numLeds = round(abs(self.ax / latTolerance))
+                        
+                        # Approaching slip angle
+                        if self.ax >= self.maxLatForce - 0.1:
+                            warningDelay = 0.1 / abs(self.ax/latTolerance)
+                            
+                            # Flash warning
+                            self.flashWarning("left", warningDelay)
+                        else:
+                            if numLeds == 1:
+                                self.lights["1L"].toggle()
+                                time.sleep(delay)
+                                self.lights["1L"].toggle()
+                            elif numLeds >= 2:
+                                self.lights["1L"].toggle()
+                                self.lights['2L'].toggle()
+                                time.sleep(delay)
+                                self.lights['1L'].toggle()
+                                self.lights['2L'].toggle()
+                                
+                # Check direction of acceleration
+                if self.ay > 0:
+                    # Forward
+                    numLeds = round(abs(self.ay/longTolR))
                     
-            # Braking
-            elif self.ay <= 0:
-                numLeds = round(abs(self.ay/longTolF))
-                
-                if numLeds == 1:
-                    self.lights["1U"].toggle()
-                    time.sleep(delay)
-                    self.lights["1U"].toggle()
-                elif numLeds >= 2:
-                    self.lights["1U"].toggle()
-                    self.lights['2U'].toggle()
-                    time.sleep(delay)
-                    self.lights['1U'].toggle()
-                    self.lights['2U'].toggle()
+                    if numLeds == 1:
+                        self.lights["1D"].toggle()
+                        time.sleep(delay)
+                        self.lights["1D"].toggle()
+                    elif numLeds >= 2:
+                        self.lights["1D"].toggle()
+                        self.lights['2D'].toggle()
+                        time.sleep(delay)
+                        self.lights['1D'].toggle()
+                        self.lights['2D'].toggle()
+                        
+                # Braking
+                elif self.ay <= 0:
+                    numLeds = round(abs(self.ay/longTolF))
+                    
+                    if numLeds == 1:
+                        self.lights["1U"].toggle()
+                        time.sleep(delay)
+                        self.lights["1U"].toggle()
+                    elif numLeds >= 2:
+                        self.lights["1U"].toggle()
+                        self.lights['2U'].toggle()
+                        time.sleep(delay)
+                        self.lights['1U'].toggle()
+                        self.lights['2U'].toggle()
                     
         
                         
             # Reset middle LED
             self.lights["M"].clear()
 
+        except Exception as e:
+            self.cleanup()
+            print(e)
+            
             
     # Free system resources and disable all GPIO
     def cleanup(self, clearAll=True):
@@ -362,6 +385,10 @@ class GMonitor:
                 continue
             
             self.lights[pin].value(0)
+        
+        # Free memory
+        if clearAll:
+            del(self.time_points)
             
             
     # Print system info to console
@@ -393,9 +420,8 @@ def main():
     
     # Start monitoring forces
     gfm.monitor()
-
-    # Cleanup
-    gfm.cleanup()
+    
+    
     
     
 if __name__ == "__main__":
