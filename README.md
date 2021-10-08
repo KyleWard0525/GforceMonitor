@@ -53,4 +53,7 @@ warn the user that their tires are about to slip as they are approaching the max
 - Build an AI model to find trends and potential improvements a driver could make, in real-time.
   - One idea for generating partial datasets is by logging and storing race telemetry from simulated sessions in iRacing
   - Another key way to gather data would be directly from the monitor itself
+  - Instead of comparing driver performance to a model trained on data from a professional driver, the idea is to simply use
+    physics to determine the limits and capabilities of the vehicle and driver in the current environment. The benefit to this would be
+    a much more dynamic model that avoids the inherent errors made by human drivers.
 - Digitalize and roll into a large vehicle telemetry project
