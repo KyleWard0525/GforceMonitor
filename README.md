@@ -50,4 +50,7 @@ warn the user that their tires are about to slip as they are approaching the max
 - Data logger
 - Add additional LEDs and functions to allow for a tire-slip warning as well as a spinout warning
 - Generalize for easier tuning for any type of vehicle
+- Build an AI model to find trends and potential improvements a driver could make, in real-time.
+  - One idea for generating partial datasets is by logging and storing race telemetry from simulated sessions in iRacing
+  - Another key way to gather data would be directly from the monitor itself
 - Digitalize and roll into a large vehicle telemetry project
